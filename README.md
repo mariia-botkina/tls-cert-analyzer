@@ -45,11 +45,8 @@ python certcheck.py example.com
 You will see a table like:
 
 ```text
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃           Domain             ┃   Status   ┃ Days Left  ┃           Issuer            ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│          example.com         │    OK      │    42      │ C=US, O=Let's Encrypt, ...  │
-└───────────────────────────────┴────────────┴────────────┴──────────────────────────────┘
+Domain       Status   Days Left   Issuer
+example.com  OK       42          C=US, O=Let's Encrypt, CN=R10
 ```
 
 Status is colorized:
