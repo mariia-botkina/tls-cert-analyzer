@@ -7,7 +7,7 @@ from rich.progress import track
 console = Console()
 err_console = Console(stderr=True)
 
-def analyze_certificate(domain: str):
+def analyze_certificate(domain: str) -> dict:
     """
     Fetch and analyze the TLS/X.509 certificate for a given domain.
     """
@@ -45,7 +45,7 @@ def render_results_table(results: list[dict]) -> None:
 def main(
     domain: str | None = typer.Argument(None, help="Single domain to analyze"),
     input_file: str | None = typer.Option(None, "--input-file", "-i", help="Read domains from .txt file")
-):
+) -> None:
     """
     Analyze TLS/X.509 certificates for one domain or a list of domains.
     """
