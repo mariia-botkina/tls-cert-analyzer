@@ -1,14 +1,12 @@
 # TLS Certificate Analyzer
 
-A small Python CLI tool that analyzes TLS/X.509 certificates for domains.
+Small Python CLI tool for inspecting TLS/X.509 certificates for domains.
 
-It can:
-
-- Connect to a domain via TLS.
-- Retrieve the server certificate.
-- Parse the X.509 certificate using `cryptography`.
-- Calculate how many days are left until expiration.
-- Show results in a nice colored table using Rich.
+- Connects to a host via TLS
+- Retrieves the server certificate
+- Parses X.509 with `cryptography`
+- Calculates days until expiration
+- Displays results in a table using `rich`
 
 ---
 
@@ -36,28 +34,15 @@ Assume the script file is called `certcheck.py`:
 python certcheck.py [OPTIONS] [DOMAIN]
 ```
 
-### Analyze a single domain
+### Single domain
 
 ```bash
 python certcheck.py example.com
 ```
 
-You will see a table like:
+### Multiple domains from file
 
-```text
-Domain       Status   Days Left   Issuer
-example.com  OK       42          C=US, O=Let's Encrypt, CN=R10
-```
-
-Status is colorized:
-
-- `OK` – green
-- `EXPIRING` (≤ 30 days) – yellow
-- `EXPIRED` / `ERROR` – red
-
-### Analyze multiple domains from a file
-
-Prepare a text file with domains, one per line, for example:
+File `domains.txt`:
 
 ```text
 example.com
@@ -71,114 +56,78 @@ Run:
 python certcheck.py --input-file domains.txt
 ```
 
-The tool will show a progress bar and then a table with all results.
-
 ---
 
 ## CLI arguments
 
-```bash
-python certcheck.py [DOMAIN] --input-file PATH
-```
-
 - `DOMAIN` (positional, optional)  
   Single domain to analyze.
 
-- `--input-file`, `-i` (optional)  
-  Path to a `.txt` file with domains (one per line).
+- `--input-file`, `-i PATH`  
+  Path to a text file with domains, one per line.
 
 Rules:
 
-- You must provide **either** a single `DOMAIN` **or** `--input-file`.
-- Using both at the same time is not allowed; the tool will fail with a clear parameter error.
+- Provide either `DOMAIN` or `--input-file`
+- Using both at the same time is not allowed
 
 ---
 
-## How it works (overview)
+## Output fields
 
-### 1. Fetching the certificate
+For each domain the tool collects:
 
-`fetch_certificate(domain, port=443)`:
+- `domain`
+- `status` – `OK`, `EXPIRING`, `EXPIRED`, `ERROR`
+- `subject`
+- `issuer`
+- `serial_number`
+- `not_before`
+- `not_after`
+- `days_left`
+- `san`
 
-- Creates a default TLS context (`ssl.create_default_context()`).
-- Opens a TCP connection with `socket.create_connection((domain, port), timeout=5)`.
-- Wraps the socket with TLS using `context.wrap_socket(sock, server_hostname=domain)`.
-- Calls `getpeercert(binary_form=True)` to get the server certificate in DER (binary) form.
+Currently the table shows:
 
-On success it returns `bytes` (DER certificate). On failure it logs an error and returns an empty `bytes` object.
+- Domain
+- Status (colorized)
+- Days Left
+- Issuer
 
-### 2. Parsing the certificate
+---
 
-`parse_certificate(cert_der)`:
+## Implementation overview
 
-- Uses `cryptography.x509.load_der_x509_certificate(cert_der)` to turn DER bytes into an `x509.Certificate` object.
+- `fetch_certificate(domain, port=443)`  
+  - Creates TLS context via `ssl.create_default_context()`
+  - Opens TCP connection with `socket.create_connection`
+  - Wraps it with `context.wrap_socket(..., server_hostname=domain)`
+  - Calls `getpeercert(binary_form=True)` and returns DER bytes
 
-If parsing fails, `analyze_certificate()` returns an error result.
+- `parse_certificate(cert_der)`  
+  - Uses `cryptography.x509.load_der_x509_certificate(cert_der)` to obtain an `x509.Certificate` object
 
-### 3. Analyzing the certificate
+- `analyze_certificate(domain)`  
+  - Fetches and parses the certificate
+  - Extracts subject, issuer, validity, SAN, serial number
+  - Computes `days_left` and derives a high-level status
 
-`analyze_certificate(domain)`:
-
-- Calls `fetch_certificate(domain)`.
-- If fetching fails (empty bytes), returns a standard `ERROR` result via `error_result(domain)`.
-- Parses the certificate with `parse_certificate()`.
-- Tries to read the `SubjectAlternativeName` (SAN) extension and collect DNS names.
-- Computes `days_left` as `(not_valid_after_utc - now).days`.
-- Derives a status:
-  - `EXPIRED` – if `days_left < 0`
-  - `EXPIRING` – if `0 ≤ days_left ≤ 30`
-  - `OK` – otherwise
-- Returns a dictionary with all relevant fields.
-
-Returned fields:
-
-- `domain` – input domain
-- `status` – `OK` / `EXPIRING` / `EXPIRED` / `ERROR`
-- `subject` – subject DN as a string
-- `issuer` – issuer DN as a string
-- `serial_number` – serial number as string
-- `not_before` – start of validity (ISO string)
-- `not_after` – end of validity (ISO string)
-- `days_left` – days until expiration (string)
-- `san` – comma-separated SAN DNS names or `"-"` if none
-
-### 4. Rendering the results
-
-`render_results_table(results)`:
-
-- Builds a `rich.table.Table` with columns:
-  - **Domain**
-  - **Status**
-  - **Days Left**
-  - **Issuer**
-- Uses `format_status(status)` to colorize the `status` cell based on its value.
-- Prints the table using `Console.print()`.
+- `render_results_table(results)`  
+  - Renders a `rich` table and applies simple color formatting to the status column
 
 ---
 
 ## Error handling
 
-- Network or TLS errors during fetch:
-  - Printed to stderr via `err_console`.
-  - The domain gets an `ERROR` row via `error_result(domain)`.
+- Network/TLS errors while fetching:
+  - Logged to stderr
+  - Domain appears in the table with status `ERROR`
 
-- Parsing errors (invalid/malformed certificate data):
-  - Printed to stderr.
-  - The domain also gets an `ERROR` row.
+- Parsing errors:
+  - Logged to stderr
+  - Domain also appears with status `ERROR`
 
-In both cases, the tool doesn’t crash; it just marks problematic domains in the table with `ERROR` and placeholder fields.
-
----
-
-## Possible future improvements
-
-Some ideas you can add later:
-
-- CLI option to show `not_after` or `subject` in the table.
-- `--port` option to scan non‑standard HTTPS ports.
-- Exit codes:
-  - e.g. return non‑zero if any domain is `ERROR` or `EXPIRED` (useful for CI).
-- Optional JSON output for scripts (`--json`).
+The tool does not stop on a single failing domain.
 
 ## License
 
